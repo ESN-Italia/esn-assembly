@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # project specific parameters
-AWS_PROFILE='esn-italian-qt'
 DOMAIN_PROD='esn-qt.org'
 DOMAIN_DEV='dev.esn-qt.org'
 
@@ -34,35 +33,18 @@ else
 fi
 echo -e "${C}Target domain: ${DOMAIN}${NC}"
 
-# install the npm modules
-echo -e "${C}Installing npm modules...${NC}"
-npm i --silent 1>/dev/null
-
-# lint the code in search for errors
-echo -e "${C}Linting...${NC}"
-npm run lint ${SRC_FOLDER} 1>/dev/null
-
-# compile the project's typescript code
-echo -e "${C}Compiling...${NC}"
-if [ "${ACTION}" == 'prod' ]
-then
-  ionic build --configuration production 1>/dev/null
-else
-  ionic build --configuration development 1>/dev/null
-fi
-
 # get the target CloudFront distribution and S3 bucket (from the domain)
-DISTRIBUTION=`aws cloudfront list-distributions --query "DistributionList.Items[*].{Id: Id, Aliases: Aliases.Items[?(@ == '${DOMAIN}')]} | [?Aliases].[Id]" --profile ${AWS_PROFILE} --output text`
-BUCKET=`aws cloudfront get-distribution --id ${DISTRIBUTION} --profile ${AWS_PROFILE} --output text \
+DISTRIBUTION=`aws cloudfront list-distributions --query "DistributionList.Items[*].{Id: Id, Aliases: Aliases.Items[?(@ == '${DOMAIN}')]} | [?Aliases].[Id]" --output text`
+BUCKET=`aws cloudfront get-distribution --id ${DISTRIBUTION} --output text \
  --query "Distribution.DistributionConfig.Origins.Items[0].DomainName" | cut -d "." -f 1`
 
 # upload the project's files to the S3 bucket
 echo -e "${C}Uploading...${NC}"
-aws s3 sync ./www s3://${BUCKET} --profile ${AWS_PROFILE} --delete --exclude ".well-known/*" 1>/dev/null
+aws s3 sync ./www s3://${BUCKET} --delete --exclude ".well-known/*" 1>/dev/null
 
 # invalidate old common files from the CloudFront distribution
 echo -e "${C}Cleaning...${NC}"
-aws cloudfront create-invalidation --profile ${AWS_PROFILE} --distribution-id ${DISTRIBUTION} \
+aws cloudfront create-invalidation --distribution-id ${DISTRIBUTION} \
   --paths "/index.html" "/assets/i18n*" \
   1>/dev/null
 
