@@ -1,7 +1,5 @@
 name: Building and Deploying to Production
 on:
-  pull_request:
-    branches: [ esn-assembly-italy-2 ]
   push:
     branches: [ esn-assembly-italy-2 ]
 env:
