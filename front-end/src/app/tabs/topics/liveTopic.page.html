@@ -220,8 +220,8 @@
                       [(ngModel)]="sortQuestionsBy"
                       (ionChange)="filterQuestions()"
                     >
-                      <ion-select-option *ngFor="let sortBy of MessagesSortBy | keyvalue" [value]="sortBy.key">
-                        {{ ('MESSAGES.SORT_BY_OPTIONS.' + sortBy.key) | translate }}
+                      <ion-select-option *ngFor="let sortBy of questionsSortOptions" [value]="sortBy">
+                        {{ ('MESSAGES.SORT_BY_OPTIONS.' + sortBy) | translate }}
                       </ion-select-option>
                     </ion-select>
                   </ion-item>
@@ -351,7 +351,7 @@
                         size="small"
                         [fill]="queueInfo[question.messageId].suggestNextRound ? 'solid' : 'clear'"
                         [color]="queueInfo[question.messageId].suggestNextRound ? 'warning' : 'primary'"
-                        [title]="(queueInfo[question.messageId].suggestNextRound ? 'MESSAGES.QUEUE.SUGGEST_NEXT_ROUND' : 'MESSAGES.QUEUE.MOVE_NEXT_ROUND') | translate"
+                        [title]="(queueInfo[question.messageId].suggestNextRound ? 'MESSAGES.QUEUE.SUGGEST_NEXT_ROUND' : 'MESSAGES.QUEUE.MOVE_NEXT_ROUND') | translate: { num: SUGGEST_NEXT_ROUND_FROM_QUESTION_NUMBER - 1 }"
                         [disabled]="movingInQueue"
                         (click)="moveInQueue(question, QueueMoves.NEXT_ROUND)"
                       >
@@ -391,8 +391,8 @@
                       [(ngModel)]="sortAppreciationsBy"
                       (ionChange)="filterAppreciations()"
                     >
-                      <ion-select-option *ngFor="let sortBy of MessagesSortBy | keyvalue" [value]="sortBy.key">
-                        {{ ('MESSAGES.SORT_BY_OPTIONS.' + sortBy.key) | translate }}
+                      <ion-select-option *ngFor="let sortBy of appreciationsSortOptions" [value]="sortBy">
+                        {{ ('MESSAGES.SORT_BY_OPTIONS.' + sortBy) | translate }}
                       </ion-select-option>
                     </ion-select>
                   </ion-item>
