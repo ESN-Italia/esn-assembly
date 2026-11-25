@@ -48,6 +48,12 @@ class MessagesAnonymousRC extends ResourceController {
 
     message.createdAt = new Date().toISOString();
     message.numOfUpvotes = 0;
+    const messagesOfTopic: Message[] = await ddb.query({
+      TableName: DDB_TABLES.messages,
+      KeyConditionExpression: 'topicId = :topicId',
+      ExpressionAttributeValues: { ':topicId': this.topic.topicId }
+    });
+    message.setQueuePositionForNewMessage(messagesOfTopic.map(x => new Message(x)));
 
     const errors = message.validate(this.topic);
     if (errors.length) throw new HandledError(`Invalid fields: ${errors.join(', ')}`);

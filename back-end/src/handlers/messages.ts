@@ -89,6 +89,7 @@ class MessagesRC extends ResourceController {
     this.message.creator = Subject.fromUser(this.galaxyUser);
     this.message.createdAt = new Date().toISOString();
     this.message.numOfUpvotes = 0;
+    this.message.setQueuePositionForNewMessage(await this.getResources());
 
     const errors = this.message.validate(this.topic);
     if (errors.length) throw new HandledError(`Invalid fields: ${errors.join(', ')}`);

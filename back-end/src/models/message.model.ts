@@ -96,6 +96,26 @@ export class Message extends Resource {
     return this.queueOrder ?? new Date(this.createdAt).getTime();
   }
   /**
+   * Set the position in the queue of a new message, ignoring any value received from the client.
+   * New questions go at the end of the current speaker round, i.e. the first round that still has questions to complete
+   * (or the last round, if all the questions have been completed).
+   * @param messagesOfTopic the messages already existing in the topic
+   */
+  setQueuePositionForNewMessage(messagesOfTopic: Message[]): void {
+    this.round = 0;
+    delete this.queueOrder;
+    if (this.type !== MessageTypes.QUESTION) return;
+
+    const questions = messagesOfTopic.filter(x => x.type === MessageTypes.QUESTION);
+    if (!questions.length) return;
+
+    const pendingRounds = questions.filter(x => !x.completedAt).map(x => x.round);
+    this.round = pendingRounds.length ? Math.min(...pendingRounds) : Math.max(...questions.map(x => x.round));
+
+    const queueOrdersOfRound = questions.filter(x => x.round === this.round).map(x => x.getQueueOrder());
+    this.queueOrder = Math.max(Date.now(), ...queueOrdersOfRound.map(x => x + 1));
+  }
+  /**
    * Compare two messages by their position in the queue: first by speaker round, then by position inside the round.
    */
   static compareByQueue(a: Message, b: Message): number {
