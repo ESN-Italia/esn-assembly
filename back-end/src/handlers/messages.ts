@@ -4,7 +4,7 @@
 
 import { DynamoDB, HandledError, ResourceController } from 'idea-aws';
 
-import { Message, MessageTypes } from '../models/message.model';
+import { Message, MessageTypes, QueueMoves } from '../models/message.model';
 import { Topic, TopicTypes } from '../models/topic.model';
 import { User } from '../models/user.model';
 import { Subject } from '../models/subject.model';
@@ -112,15 +112,13 @@ class MessagesRC extends ResourceController {
   }
 
   protected async patchResource(): Promise<Message> {
+    if (Object.values(QueueMoves).includes(this.body.action)) return await this.moveInQueue(this.body.action);
+
     switch (this.body.action) {
       case 'MARK_COMPLETE':
         return await this.markComplete();
       case 'UNDO_COMPLETE':
         return await this.undoComplete();
-      case 'POSTPONE':
-        return await this.postpone();
-      case 'UNDO_POSTPONE':
-        return await this.undoPostpone();
       default:
         throw new HandledError('Unsupported action');
     }
@@ -154,35 +152,85 @@ class MessagesRC extends ResourceController {
 
     return this.message;
   }
-  private async postpone(): Promise<Message> {
+
+  private async moveInQueue(move: QueueMoves): Promise<Message> {
     if (this.topic.isArchived()) throw new Error('Topic is archived');
     if (!this.galaxyUser.isAdministrator) throw new Error('Unauthorized');
-    if (this.message.type !== MessageTypes.QUESTION) throw new HandledError('Only questions can be postponed');
+    if (this.message.type !== MessageTypes.QUESTION) throw new HandledError('Only questions can be moved');
     if (this.message.completedAt) throw new HandledError('Message is already complete');
 
-    this.message.postponedAt = new Date().toISOString();
+    const queue = (await this.getResources())
+      .filter(x => x.type === MessageTypes.QUESTION && !x.completedAt)
+      .sort(Message.compareByQueue);
+    const currentRound = queue.filter(x => x.round === this.message.round);
+    const index = currentRound.findIndex(x => x.messageId === this.message.messageId);
+    const isFirst = index === 0;
+    const isLast = index === currentRound.length - 1;
+
+    switch (move) {
+      case QueueMoves.UP:
+        if (isFirst) return this.message;
+        return await this.swapPositionInQueue(currentRound[index - 1], -1);
+      case QueueMoves.DOWN:
+        if (isLast) return this.message;
+        return await this.swapPositionInQueue(currentRound[index + 1], 1);
+      case QueueMoves.TOP:
+        if (isFirst) return this.message;
+        return await this.setPositionInQueue(this.message.round, currentRound[0].getQueueOrder() - 1);
+      case QueueMoves.BOTTOM:
+        if (isLast) return this.message;
+        return await this.setPositionInQueue(
+          this.message.round,
+          currentRound[currentRound.length - 1].getQueueOrder() + 1
+        );
+      case QueueMoves.PREVIOUS_ROUND:
+        if (this.message.round === 0) throw new HandledError('Already in the first round');
+        return await this.setPositionInQueue(this.message.round - 1, this.getEndOfRound(queue, this.message.round - 1));
+      case QueueMoves.NEXT_ROUND:
+        return await this.setPositionInQueue(this.message.round + 1, this.getEndOfRound(queue, this.message.round + 1));
+    }
+  }
+  private getEndOfRound(queue: Message[], round: number): number {
+    const ofRound = queue.filter(x => x.round === round);
+    const lastOfRound = ofRound[ofRound.length - 1];
+    return lastOfRound ? lastOfRound.getQueueOrder() + 1 : Date.now();
+  }
+  private async setPositionInQueue(round: number, queueOrder: number): Promise<Message> {
+    this.message.round = round;
+    this.message.queueOrder = queueOrder;
     await ddb.update({
       TableName: DDB_TABLES.messages,
-      Key: { topicId: this.topic.topicId, messageId: this.resourceId },
-      UpdateExpression: 'SET postponedAt = :postponedAt',
-      ExpressionAttributeValues: { ':postponedAt': this.message.postponedAt }
+      Key: { topicId: this.topic.topicId, messageId: this.message.messageId },
+      UpdateExpression: 'SET #round = :round, queueOrder = :queueOrder',
+      ExpressionAttributeNames: { '#round': 'round' },
+      ExpressionAttributeValues: { ':round': round, ':queueOrder': queueOrder }
     });
-
     return this.message;
   }
-  private async undoPostpone(): Promise<Message> {
-    if (this.topic.isArchived()) throw new Error('Topic is archived');
-    if (!this.galaxyUser.isAdministrator) throw new Error('Unauthorized');
+  /**
+   * Swap the position of the current message with an adjacent one in the same round.
+   * @param direction -1 if the other message comes before the current one, 1 if it comes after
+   */
+  private async swapPositionInQueue(other: Message, direction: -1 | 1): Promise<Message> {
+    const otherQueueOrder = other.getQueueOrder();
+    let thisQueueOrder = this.message.getQueueOrder();
+    // in the (rare) case of a tie, make sure the swap actually changes the order
+    if (thisQueueOrder === otherQueueOrder) thisQueueOrder = otherQueueOrder - direction;
 
-    if (!this.message.postponedAt) return this.message;
-
-    delete this.message.postponedAt;
-    await ddb.update({
-      TableName: DDB_TABLES.messages,
-      Key: { topicId: this.topic.topicId, messageId: this.resourceId },
-      UpdateExpression: 'REMOVE postponedAt'
+    const update = (messageId: string, queueOrder: number): any => ({
+      Update: {
+        TableName: DDB_TABLES.messages,
+        Key: { topicId: this.topic.topicId, messageId },
+        UpdateExpression: 'SET queueOrder = :queueOrder',
+        ExpressionAttributeValues: { ':queueOrder': queueOrder }
+      }
     });
+    await ddb.transactWrites([
+      update(this.message.messageId, otherQueueOrder),
+      update(other.messageId, thisQueueOrder)
+    ]);
 
+    this.message.queueOrder = otherQueueOrder;
     return this.message;
   }
 }

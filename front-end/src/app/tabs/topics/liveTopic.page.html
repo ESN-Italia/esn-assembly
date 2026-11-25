@@ -238,71 +238,129 @@
               <ion-item class="noElements" *ngIf="questions && !questions.length">
                 <ion-label>{{ 'MESSAGES.NO_MESSAGES' | translate }}</ion-label>
               </ion-item>
-              <ion-card
-                class="messageCard"
-                *ngFor="let question of questions; trackBy: trackBy"
-                [class.author]="question.creator?.id === app.user.userId"
-                [class.complete]="question.completedAt"
-              >
-                <ion-card-header>
-                  <ion-row class="ion-align-items-center">
-                    <ion-col [size]="12" [sizeLg]="9">
-                      <ion-card-title>
-                        <ion-icon icon="checkmark-done" class="ion-padding-end" *ngIf="question.completedAt" />
-                        <ion-icon
-                          icon="play-skip-forward"
-                          class="ion-padding-end"
-                          *ngIf="question.postponedAt && !question.completedAt"
-                          [title]="'MESSAGES.POSTPONED' | translate"
-                        />
-                        <ion-text *ngIf="question.creator">
-                          <b>{{ question.creator.name }}</b> - {{
-                          question.creator.getOrigin(app.configurations.usersOriginDisplay) }}
-                        </ion-text>
-                        <i *ngIf="!question.creator">{{ 'MESSAGES.ANONYMOUS' | translate }}</i>
-                      </ion-card-title>
-                    </ion-col>
-                    <ion-col
-                      *ngIf="!topic.isArchived()"
-                      [class.ion-text-right]="!app.isInMobileMode()"
-                      [size]="12"
-                      [sizeLg]="3"
+              <ng-container *ngFor="let question of questions; let i = index; trackBy: trackBy">
+                <ion-list-header class="roundHeader" *ngIf="isStartOfRound(i)">
+                  <ion-label>{{ 'MESSAGES.QUEUE.SPEAKER_ROUND' | translate: { round: question.round + 1 } }}</ion-label>
+                </ion-list-header>
+                <ion-card
+                  class="messageCard"
+                  [class.author]="question.creator?.id === app.user.userId"
+                  [class.complete]="question.completedAt"
+                >
+                  <ion-card-header>
+                    <ion-row class="ion-align-items-center">
+                      <ion-col [size]="12" [sizeLg]="9">
+                        <ion-card-title>
+                          <ion-icon icon="checkmark-done" class="ion-padding-end" *ngIf="question.completedAt" />
+                          <ion-text *ngIf="question.creator">
+                            <b>{{ question.creator.name }}</b> - {{
+                            question.creator.getOrigin(app.configurations.usersOriginDisplay) }}
+                          </ion-text>
+                          <i *ngIf="!question.creator">{{ 'MESSAGES.ANONYMOUS' | translate }}</i>
+                        </ion-card-title>
+                      </ion-col>
+                      <ion-col
+                        *ngIf="!topic.isArchived()"
+                        [class.ion-text-right]="!app.isInMobileMode()"
+                        [size]="12"
+                        [sizeLg]="3"
+                      >
+                        <ion-button
+                          fill="clear"
+                          color="medium"
+                          *ngIf="!app.user.isAdministrator && !(question.creator?.id === app.user.userId)"
+                          (click)="seeMessageUpvoters(question, $event)"
+                        >
+                          <ion-icon name="eye"></ion-icon>
+                        </ion-button>
+                        <ion-button
+                          fill="clear"
+                          color="ESNgreen"
+                          (click)="upvoteMessage(question, !hasUserUpvotedMessage[question.messageId])"
+                        >
+                          <ion-icon
+                            slot="start"
+                            [name]="hasUserUpvotedMessage[question.messageId] ? 'thumbs-up' : 'thumbs-up-outline'"
+                          ></ion-icon>
+                          <b>{{ question.numOfUpvotes }}</b>
+                        </ion-button>
+                        <ion-button
+                          fill="clear"
+                          color="medium"
+                          *ngIf="app.user.isAdministrator || question.creator?.id === app.user.userId"
+                          (click)="actionsOnMessage(question)"
+                        >
+                          <ion-icon name="ellipsis-horizontal"></ion-icon>
+                        </ion-button>
+                      </ion-col>
+                    </ion-row>
+                  </ion-card-header>
+                  <ion-card-content>
+                    {{ question.summary }}
+                    <ion-icon icon="document-text" *ngIf="question.text && app.user.isAdministrator"></ion-icon>
+                    <div
+                      class="queueButtons"
+                      *ngIf="canManageQueue() && !question.completedAt && queueInfo[question.messageId]"
                     >
                       <ion-button
                         fill="clear"
-                        color="medium"
-                        *ngIf="!app.user.isAdministrator && !(question.creator?.id === app.user.userId)"
-                        (click)="seeMessageUpvoters(question, $event)"
+                        size="small"
+                        [title]="'MESSAGES.QUEUE.MOVE_TOP' | translate"
+                        [disabled]="movingInQueue || queueInfo[question.messageId].isFirst"
+                        (click)="moveInQueue(question, QueueMoves.TOP)"
                       >
-                        <ion-icon name="eye"></ion-icon>
+                        <ion-icon slot="icon-only" icon="play-back" class="rotate90" />
                       </ion-button>
                       <ion-button
                         fill="clear"
-                        color="ESNgreen"
-                        (click)="upvoteMessage(question, !hasUserUpvotedMessage[question.messageId])"
+                        size="small"
+                        [title]="'MESSAGES.QUEUE.MOVE_UP' | translate"
+                        [disabled]="movingInQueue || queueInfo[question.messageId].isFirst"
+                        (click)="moveInQueue(question, QueueMoves.UP)"
                       >
-                        <ion-icon
-                          slot="start"
-                          [name]="hasUserUpvotedMessage[question.messageId] ? 'thumbs-up' : 'thumbs-up-outline'"
-                        ></ion-icon>
-                        <b>{{ question.numOfUpvotes }}</b>
+                        <ion-icon slot="icon-only" icon="chevron-up" />
                       </ion-button>
                       <ion-button
                         fill="clear"
-                        color="medium"
-                        *ngIf="app.user.isAdministrator || question.creator?.id === app.user.userId"
-                        (click)="actionsOnMessage(question)"
+                        size="small"
+                        [title]="'MESSAGES.QUEUE.MOVE_DOWN' | translate"
+                        [disabled]="movingInQueue || queueInfo[question.messageId].isLast"
+                        (click)="moveInQueue(question, QueueMoves.DOWN)"
                       >
-                        <ion-icon name="ellipsis-horizontal"></ion-icon>
+                        <ion-icon slot="icon-only" icon="chevron-down" />
                       </ion-button>
-                    </ion-col>
-                  </ion-row>
-                </ion-card-header>
-                <ion-card-content>
-                  {{ question.summary }}
-                  <ion-icon icon="document-text" *ngIf="question.text && app.user.isAdministrator"></ion-icon>
-                </ion-card-content>
-              </ion-card>
+                      <ion-button
+                        fill="clear"
+                        size="small"
+                        [title]="'MESSAGES.QUEUE.MOVE_BOTTOM' | translate"
+                        [disabled]="movingInQueue || queueInfo[question.messageId].isLast"
+                        (click)="moveInQueue(question, QueueMoves.BOTTOM)"
+                      >
+                        <ion-icon slot="icon-only" icon="play-forward" class="rotate90" />
+                      </ion-button>
+                      <ion-button
+                        fill="clear"
+                        size="small"
+                        [title]="'MESSAGES.QUEUE.MOVE_PREVIOUS_ROUND' | translate"
+                        [disabled]="movingInQueue || !question.round"
+                        (click)="moveInQueue(question, QueueMoves.PREVIOUS_ROUND)"
+                      >
+                        <ion-icon slot="icon-only" icon="chevron-back" />
+                      </ion-button>
+                      <ion-button
+                        size="small"
+                        [fill]="queueInfo[question.messageId].suggestNextRound ? 'solid' : 'clear'"
+                        [color]="queueInfo[question.messageId].suggestNextRound ? 'warning' : 'primary'"
+                        [title]="(queueInfo[question.messageId].suggestNextRound ? 'MESSAGES.QUEUE.SUGGEST_NEXT_ROUND' : 'MESSAGES.QUEUE.MOVE_NEXT_ROUND') | translate"
+                        [disabled]="movingInQueue"
+                        (click)="moveInQueue(question, QueueMoves.NEXT_ROUND)"
+                      >
+                        <ion-icon slot="icon-only" icon="chevron-forward" />
+                      </ion-button>
+                    </div>
+                  </ion-card-content>
+                </ion-card>
+              </ng-container>
             </ion-col>
             <ion-col
               *ngIf="topic.appreciations && (fullScreen && !hideAppreciations)  || (!fullScreen && segment === MessageTypes.APPRECIATION)"

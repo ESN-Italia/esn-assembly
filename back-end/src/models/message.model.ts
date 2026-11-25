@@ -46,10 +46,16 @@ export class Message extends Resource {
    */
   completedAt?: epochISOString;
   /**
-   * The timestamp when the message was (last) moved to the end of the queue.
+   * The speaker round of the message in the queue, starting from 0.
    * Only for `MessageTypes.QUESTION`.
    */
-  postponedAt?: epochISOString;
+  round: number;
+  /**
+   * The position of the message inside its speaker round (lower first).
+   * If not set, the timestamp of creation is used.
+   * Only for `MessageTypes.QUESTION`.
+   */
+  queueOrder?: number;
 
   static getPK(userId: string): string {
     return [new Date().toISOString(), userId].join('_');
@@ -66,7 +72,8 @@ export class Message extends Resource {
     this.createdAt = this.clean(x.createdAt, d => new Date(d).toISOString(), new Date().toISOString());
     this.numOfUpvotes = this.clean(x.numOfUpvotes, Number, 0);
     if (x.completedAt) this.completedAt = this.clean(x.completedAt, d => new Date(d).toISOString());
-    if (x.postponedAt) this.postponedAt = this.clean(x.postponedAt, d => new Date(d).toISOString());
+    this.round = this.clean(x.round, Number, 0);
+    if (x.queueOrder !== undefined && x.queueOrder !== null) this.queueOrder = this.clean(x.queueOrder, Number);
   }
 
   safeLoad(newData: any, safeData: any): void {
@@ -78,14 +85,21 @@ export class Message extends Resource {
     this.createdAt = safeData.createdAt;
     this.numOfUpvotes = safeData.numOfUpvotes;
     if (safeData.completedAt) this.completedAt = safeData.completedAt;
-    if (safeData.postponedAt) this.postponedAt = safeData.postponedAt;
+    this.round = safeData.round;
+    if (safeData.queueOrder !== undefined) this.queueOrder = safeData.queueOrder;
   }
 
   /**
-   * The key to order the message in the queue: postponed messages go after the ones created before the postponement.
+   * The position of the message inside its speaker round (lower first).
    */
-  getQueueKey(): string {
-    return (this.postponedAt ?? this.createdAt).concat('_', this.messageId);
+  getQueueOrder(): number {
+    return this.queueOrder ?? new Date(this.createdAt).getTime();
+  }
+  /**
+   * Compare two messages by their position in the queue: first by speaker round, then by position inside the round.
+   */
+  static compareByQueue(a: Message, b: Message): number {
+    return a.round - b.round || a.getQueueOrder() - b.getQueueOrder() || a.messageId.localeCompare(b.messageId);
   }
 
   validate(topic: Topic): string[] {
@@ -131,6 +145,18 @@ export class MessageUpvote extends Resource {
     this.creator = new Subject(x.creator);
     this.createdAt = this.clean(x.createdAt, d => new Date(d).toISOString(), new Date().toISOString());
   }
+}
+
+/**
+ * The possible moves of a question in the queue (speakers' list).
+ */
+export enum QueueMoves {
+  UP = 'MOVE_UP',
+  DOWN = 'MOVE_DOWN',
+  TOP = 'MOVE_TOP',
+  BOTTOM = 'MOVE_BOTTOM',
+  PREVIOUS_ROUND = 'MOVE_PREVIOUS_ROUND',
+  NEXT_ROUND = 'MOVE_NEXT_ROUND'
 }
 
 /**

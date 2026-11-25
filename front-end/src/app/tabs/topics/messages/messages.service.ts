@@ -4,7 +4,7 @@ import { IDEAApiService } from '@idea-ionic/common';
 import { AppService } from '@app/app.service';
 
 import { Topic } from '@models/topic.model';
-import { Message, MessageTypes } from '@models/message.model';
+import { Message, MessageTypes, QueueMoves } from '@models/message.model';
 import { Subject } from '@models/subject.model';
 
 @Injectable({ providedIn: 'root' })
@@ -65,10 +65,10 @@ export class MessagesService {
 
     switch (options.sortBy) {
       case MessagesSortBy.CREATION_ASC:
-        filteredList = filteredList.sort((a, b): number => a.getQueueKey().localeCompare(b.getQueueKey()));
+        filteredList = filteredList.sort(Message.compareByQueue);
         break;
       case MessagesSortBy.CREATION_DESC:
-        filteredList = filteredList.sort((a, b): number => b.getQueueKey().localeCompare(a.getQueueKey()));
+        filteredList = filteredList.sort((a, b): number => b.messageId.localeCompare(a.messageId));
         break;
       case MessagesSortBy.UPVOTES_ASC:
         filteredList = filteredList.sort(
@@ -157,19 +157,11 @@ export class MessagesService {
   }
 
   /**
-   * Move a message (question) to the end of the queue.
+   * Move a message (question) in the queue (speakers' list).
    */
-  async postpone(topic: Topic, message: Message): Promise<Message> {
+  async moveInQueue(topic: Topic, message: Message, move: QueueMoves): Promise<Message> {
     const path = ['topics', topic.topicId, 'messages', message.messageId];
-    const body = { action: 'POSTPONE' };
-    return new Message(await this.api.patchResource(path, { body }));
-  }
-  /**
-   * Restore the original position of a postponed message (question) in the queue.
-   */
-  async undoPostpone(topic: Topic, message: Message): Promise<Message> {
-    const path = ['topics', topic.topicId, 'messages', message.messageId];
-    const body = { action: 'UNDO_POSTPONE' };
+    const body = { action: move };
     return new Message(await this.api.patchResource(path, { body }));
   }
 

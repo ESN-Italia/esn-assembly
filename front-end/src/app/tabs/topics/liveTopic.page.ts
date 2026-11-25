@@ -19,7 +19,7 @@ import { MessagesService, MessagesSortBy } from './messages/messages.service';
 import { ConfigurationsService } from '../configurations/configurations.service';
 
 import { Topic, TopicTypes } from '@models/topic.model';
-import { Message, MessageTypes } from '@models/message.model';
+import { Message, MessageTypes, QueueMoves } from '@models/message.model';
 import { Subject } from '@models/subject.model';
 import { WebSocketConnectionTypes, WebSocketMessage } from '@models/webSocket.model';
 
@@ -35,12 +35,24 @@ export class LiveTopicPage implements OnInit, OnDestroy {
   questions: Message[];
   showCompletedQuestions = false;
   sortQuestionsBy = MessagesSortBy.CREATION_ASC;
+  /**
+   * For each question in the queue, whether it's the first/last of its speaker round
+   * and whether it should be suggested to move it to the next round.
+   */
+  queueInfo: Record<string, { isFirst: boolean; isLast: boolean; suggestNextRound: boolean }> = {};
+  questionsHaveMultipleRounds = false;
+  movingInQueue = false;
+  /**
+   * From which question of the same person in a speaker round, the move to the next round is suggested.
+   */
+  SUGGEST_NEXT_ROUND_FROM_QUESTION_NUMBER = 3;
 
   appreciations: Message[];
   showCompletedAppreciations = false;
   sortAppreciationsBy = MessagesSortBy.CREATION_DESC;
 
   MessageTypes = MessageTypes;
+  QueueMoves = QueueMoves;
   MessagesSortBy = MessagesSortBy;
   newMessage: Message;
   errors = new Set<string>();
@@ -141,8 +153,60 @@ export class LiveTopicPage implements OnInit, OnDestroy {
       withPagination: true,
       startPaginationAfterId
     });
+    await this.calculateQueueInfo();
 
     if (scrollToNextPage) setTimeout((): Promise<void> => scrollToNextPage.complete(), 100);
+  }
+  private async calculateQueueInfo(): Promise<void> {
+    const allQuestions = await this._messages.getListOfTopic(this.topic, {
+      filterByType: MessageTypes.QUESTION,
+      showCompleted: true,
+      sortBy: MessagesSortBy.CREATION_ASC
+    });
+    const queueInfo: LiveTopicPage['queueInfo'] = {};
+    const questionsInRoundByCreator: Record<string, number> = {};
+    allQuestions.forEach((question): void => {
+      if (question.creator) {
+        const key = [question.round, question.creator.id].join('_');
+        questionsInRoundByCreator[key] = (questionsInRoundByCreator[key] ?? 0) + 1;
+        if (!question.completedAt && questionsInRoundByCreator[key] >= this.SUGGEST_NEXT_ROUND_FROM_QUESTION_NUMBER)
+          queueInfo[question.messageId] = { isFirst: false, isLast: false, suggestNextRound: true };
+      }
+    });
+    const queue = allQuestions.filter(x => !x.completedAt);
+    queue.forEach((question, index): void => {
+      queueInfo[question.messageId] = {
+        isFirst: queue[index - 1]?.round !== question.round,
+        isLast: queue[index + 1]?.round !== question.round,
+        suggestNextRound: queueInfo[question.messageId]?.suggestNextRound ?? false
+      };
+    });
+    this.queueInfo = queueInfo;
+    this.questionsHaveMultipleRounds = allQuestions.some(x => x.round > 0);
+  }
+  canManageQueue(): boolean {
+    return (
+      this.app.user.isAdministrator &&
+      !this.topic.isArchived() &&
+      !this.fullScreen &&
+      this.sortQuestionsBy === MessagesSortBy.CREATION_ASC
+    );
+  }
+  isStartOfRound(index: number): boolean {
+    if (this.sortQuestionsBy !== MessagesSortBy.CREATION_ASC || !this.questionsHaveMultipleRounds) return false;
+    return index === 0 || this.questions[index - 1].round !== this.questions[index].round;
+  }
+  async moveInQueue(question: Message, move: QueueMoves): Promise<void> {
+    if (this.movingInQueue) return;
+    try {
+      this.movingInQueue = true;
+      await this._messages.moveInQueue(this.topic, question, move);
+      await this.filterQuestions(null, true);
+    } catch (err) {
+      this.message.error('COMMON.OPERATION_FAILED');
+    } finally {
+      this.movingInQueue = false;
+    }
   }
   async filterAppreciations(scrollToNextPage?: IonInfiniteScroll, force = false): Promise<void> {
     let startPaginationAfterId = null;
@@ -263,19 +327,6 @@ export class LiveTopicPage implements OnInit, OnDestroy {
       this.loading.hide();
     }
   }
-  private async changePostponeStatus(message: Message, postpone: boolean): Promise<void> {
-    try {
-      await this.loading.show();
-      if (postpone) await this._messages.postpone(this.topic, message);
-      else await this._messages.undoPostpone(this.topic, message);
-      this.filterQuestions(null, true);
-      this.message.success('COMMON.OPERATION_COMPLETED');
-    } catch (err) {
-      this.message.error('COMMON.OPERATION_FAILED');
-    } finally {
-      this.loading.hide();
-    }
-  }
   private async deleteMessage(message: Message): Promise<void> {
     const doDelete = async (): Promise<void> => {
       try {
@@ -351,25 +402,6 @@ export class LiveTopicPage implements OnInit, OnDestroy {
         icon: 'square-outline',
         handler: (): Promise<void> => this.changeCompleteStatus(message, false)
       });
-    }
-
-    if (
-      this.app.user.isAdministrator &&
-      message.type === MessageTypes.QUESTION &&
-      !message.completedAt &&
-      !this.topic.isArchived()
-    ) {
-      buttons.push({
-        text: this.t._('MESSAGES.POSTPONE'),
-        icon: 'play-skip-forward',
-        handler: (): Promise<void> => this.changePostponeStatus(message, true)
-      });
-      if (message.postponedAt)
-        buttons.push({
-          text: this.t._('MESSAGES.UNDO_POSTPONE'),
-          icon: 'arrow-undo-circle',
-          handler: (): Promise<void> => this.changePostponeStatus(message, false)
-        });
     }
 
     if (

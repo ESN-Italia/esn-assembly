@@ -108,3 +108,18 @@ ion-list.messagesList {
   max-width: 170px;
   margin: 10px auto;
 }
+
+ion-list-header.roundHeader {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.queueButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+ion-icon.rotate90 {
+  transform: rotate(90deg);
+}
