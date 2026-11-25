@@ -19,7 +19,7 @@ import { MessagesService, MessagesSortBy } from './messages/messages.service';
 import { ConfigurationsService } from '../configurations/configurations.service';
 
 import { Topic, TopicTypes } from '@models/topic.model';
-import { Message, MessageTypes } from '@models/message.model';
+import { Message, MessageTypes, QueueMoves } from '@models/message.model';
 import { Subject } from '@models/subject.model';
 import { WebSocketConnectionTypes, WebSocketMessage } from '@models/webSocket.model';
 
@@ -34,14 +34,28 @@ export class LiveTopicPage implements OnInit, OnDestroy {
 
   questions: Message[];
   showCompletedQuestions = false;
-  sortQuestionsBy = MessagesSortBy.CREATION_ASC;
+  sortQuestionsBy = MessagesSortBy.QUEUE;
+  /**
+   * For each question in the queue, whether it's the first/last of its speaker round
+   * and whether it should be suggested to move it to the next round.
+   */
+  queueInfo: Record<string, { isFirst: boolean; isLast: boolean; suggestNextRound: boolean }> = {};
+  questionsHaveMultipleRounds = false;
+  movingInQueue = false;
+  /**
+   * From which question of the same person in a speaker round, the move to the next round is suggested.
+   */
+  SUGGEST_NEXT_ROUND_FROM_QUESTION_NUMBER = 3;
 
   appreciations: Message[];
   showCompletedAppreciations = false;
   sortAppreciationsBy = MessagesSortBy.CREATION_DESC;
 
   MessageTypes = MessageTypes;
+  QueueMoves = QueueMoves;
   MessagesSortBy = MessagesSortBy;
+  questionsSortOptions = Object.values(MessagesSortBy);
+  appreciationsSortOptions = Object.values(MessagesSortBy).filter(x => x !== MessagesSortBy.QUEUE);
   newMessage: Message;
   errors = new Set<string>();
 
@@ -139,10 +153,66 @@ export class LiveTopicPage implements OnInit, OnDestroy {
       showCompleted: this.showCompletedQuestions,
       sortBy: this.sortQuestionsBy,
       withPagination: true,
-      startPaginationAfterId
+      startPaginationAfterId,
+      minNumOfElements: this.questions?.length
     });
+    await this.calculateQueueInfo();
 
     if (scrollToNextPage) setTimeout((): Promise<void> => scrollToNextPage.complete(), 100);
+  }
+  private async calculateQueueInfo(): Promise<void> {
+    const allQuestions = await this._messages.getListOfTopic(this.topic, {
+      filterByType: MessageTypes.QUESTION,
+      showCompleted: true,
+      sortBy: MessagesSortBy.QUEUE
+    });
+    const queueInfo: LiveTopicPage['queueInfo'] = {};
+    const questionsInRoundByCreator: Record<string, number> = {};
+    allQuestions.forEach((question): void => {
+      if (question.creator) {
+        const key = [question.round, question.creator.id].join('_');
+        questionsInRoundByCreator[key] = (questionsInRoundByCreator[key] ?? 0) + 1;
+        if (!question.completedAt && questionsInRoundByCreator[key] >= this.SUGGEST_NEXT_ROUND_FROM_QUESTION_NUMBER)
+          queueInfo[question.messageId] = { isFirst: false, isLast: false, suggestNextRound: true };
+      }
+    });
+    const queue = allQuestions.filter(x => !x.completedAt);
+    queue.forEach((question, index): void => {
+      queueInfo[question.messageId] = {
+        isFirst: queue[index - 1]?.round !== question.round,
+        isLast: queue[index + 1]?.round !== question.round,
+        suggestNextRound: queueInfo[question.messageId]?.suggestNextRound ?? false
+      };
+    });
+    this.queueInfo = queueInfo;
+    this.questionsHaveMultipleRounds = allQuestions.some(x => x.round > 0);
+  }
+  canManageQueue(): boolean {
+    return (
+      this.app.user.isAdministrator &&
+      !this.topic.isArchived() &&
+      !this.fullScreen &&
+      this.sortQuestionsBy === MessagesSortBy.QUEUE
+    );
+  }
+  isStartOfRound(index: number): boolean {
+    if (this.sortQuestionsBy !== MessagesSortBy.QUEUE || !this.questionsHaveMultipleRounds) return false;
+    return index === 0 || this.questions[index - 1].round !== this.questions[index].round;
+  }
+  async moveInQueue(question: Message, move: QueueMoves): Promise<void> {
+    if (this.movingInQueue) return;
+    try {
+      this.movingInQueue = true;
+      await this._messages.moveInQueue(this.topic, question, move);
+      await this.filterQuestions(null, true);
+    } catch (err) {
+      // show the specific reason (e.g. the question was completed in the meantime) and re-sync the list
+      if (err?.message) this.message.error(err.message, true);
+      else this.message.error('COMMON.OPERATION_FAILED');
+      await this.filterQuestions(null, true);
+    } finally {
+      this.movingInQueue = false;
+    }
   }
   async filterAppreciations(scrollToNextPage?: IonInfiniteScroll, force = false): Promise<void> {
     let startPaginationAfterId = null;
@@ -155,7 +225,8 @@ export class LiveTopicPage implements OnInit, OnDestroy {
       showCompleted: this.showCompletedAppreciations,
       sortBy: this.sortAppreciationsBy,
       withPagination: true,
-      startPaginationAfterId
+      startPaginationAfterId,
+      minNumOfElements: this.appreciations?.length
     });
 
     if (scrollToNextPage) setTimeout((): Promise<void> => scrollToNextPage.complete(), 100);

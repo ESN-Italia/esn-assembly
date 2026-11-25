@@ -85,7 +85,7 @@ class MessagesUpvotesRC extends ResourceController {
     await ddb.put({ TableName: DDB_TABLES.messagesUpvotes, Item: upvoteItem });
 
     this.message.numOfUpvotes = await this.getLiveNumUpvotes();
-    await ddb.put({ TableName: DDB_TABLES.messages, Item: this.message });
+    await this.updateNumOfUpvotesOfMessage();
 
     await addBadgeToUser(ddb, this.galaxyUser.userId, BuiltInBadges.NEWCOMER);
     if ((await this.getNumMessagesUpvotedByUser()) >= 15)
@@ -99,7 +99,18 @@ class MessagesUpvotesRC extends ResourceController {
     });
 
     this.message.numOfUpvotes = await this.getLiveNumUpvotes();
-    await ddb.put({ TableName: DDB_TABLES.messages, Item: this.message });
+    await this.updateNumOfUpvotesOfMessage();
+  }
+  /**
+   * Update only the counter, to avoid overwriting concurrent changes to the message (e.g. its position in the queue).
+   */
+  private async updateNumOfUpvotesOfMessage(): Promise<void> {
+    await ddb.update({
+      TableName: DDB_TABLES.messages,
+      Key: { topicId: this.message.topicId, messageId: this.message.messageId },
+      UpdateExpression: 'SET numOfUpvotes = :numOfUpvotes',
+      ExpressionAttributeValues: { ':numOfUpvotes': this.message.numOfUpvotes }
+    });
   }
 
   protected async getResource(): Promise<{ upvoted: boolean }> {

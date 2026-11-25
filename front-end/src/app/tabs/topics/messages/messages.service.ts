@@ -4,7 +4,7 @@ import { IDEAApiService } from '@idea-ionic/common';
 import { AppService } from '@app/app.service';
 
 import { Topic } from '@models/topic.model';
-import { Message, MessageTypes } from '@models/message.model';
+import { Message, MessageTypes, QueueMoves } from '@models/message.model';
 import { Subject } from '@models/subject.model';
 
 @Injectable({ providedIn: 'root' })
@@ -39,6 +39,10 @@ export class MessagesService {
       showCompleted?: boolean;
       withPagination?: boolean;
       startPaginationAfterId?: string;
+      /**
+       * With pagination, return at least this number of elements (e.g. to keep the ones already displayed).
+       */
+      minNumOfElements?: number;
     } = { sortBy: MessagesSortBy.CREATION_ASC }
   ): Promise<Message[]> {
     if (!this.messages || options.force) await this.loadListOfTopic(topic);
@@ -67,6 +71,9 @@ export class MessagesService {
       case MessagesSortBy.CREATION_ASC:
         filteredList = filteredList.sort((a, b): number => a.messageId.localeCompare(b.messageId));
         break;
+      case MessagesSortBy.QUEUE:
+        filteredList = filteredList.sort(Message.compareByQueue);
+        break;
       case MessagesSortBy.CREATION_DESC:
         filteredList = filteredList.sort((a, b): number => b.messageId.localeCompare(a.messageId));
         break;
@@ -85,8 +92,12 @@ export class MessagesService {
     if (options.withPagination && filteredList.length > this.MAX_PAGE_SIZE) {
       let indexOfLastOfPreviousPage = 0;
       if (options.startPaginationAfterId)
-        indexOfLastOfPreviousPage = filteredList.findIndex(x => x.messageId === options.startPaginationAfterId) || 0;
-      filteredList = filteredList.slice(0, indexOfLastOfPreviousPage + this.MAX_PAGE_SIZE);
+        indexOfLastOfPreviousPage = Math.max(
+          0,
+          filteredList.findIndex(x => x.messageId === options.startPaginationAfterId)
+        );
+      const numOfElements = Math.max(indexOfLastOfPreviousPage + this.MAX_PAGE_SIZE, options.minNumOfElements ?? 0);
+      filteredList = filteredList.slice(0, numOfElements);
     }
 
     return filteredList;
@@ -157,6 +168,15 @@ export class MessagesService {
   }
 
   /**
+   * Move a message (question) in the queue (speakers' list).
+   */
+  async moveInQueue(topic: Topic, message: Message, move: QueueMoves): Promise<Message> {
+    const path = ['topics', topic.topicId, 'messages', message.messageId];
+    const body = { action: move };
+    return new Message(await this.api.patchResource(path, { body }));
+  }
+
+  /**
    * Delete a message.
    */
   async delete(topic: Topic, message: Message): Promise<void> {
@@ -190,6 +210,7 @@ export class MessagesService {
  * The possible sortings for lists of messages.
  */
 export enum MessagesSortBy {
+  QUEUE = 'QUEUE',
   CREATION_DESC = 'CREATION_DESC',
   CREATION_ASC = 'CREATION_ASC',
   UPVOTES_DESC = 'UPVOTES_DESC',

@@ -532,6 +532,7 @@
     "SHOW_COMPLETED": "Show completed",
     "SORT_BY": "Show first",
     "SORT_BY_OPTIONS": {
+      "QUEUE": "Speakers' list",
       "CREATION_ASC": "Oldest",
       "CREATION_DESC": "Newest",
       "UPVOTES_ASC": "Least upvoted",
@@ -540,6 +541,16 @@
     "ACTIONS": "Actions",
     "MARK_COMPLETE": "Mark complete",
     "UNDO_COMPLETE": "Undo complete",
+    "QUEUE": {
+      "SPEAKER_ROUND": "Speaker round {{round}}",
+      "MOVE_TOP": "Move to the top of the round",
+      "MOVE_UP": "Move up",
+      "MOVE_DOWN": "Move down",
+      "MOVE_BOTTOM": "Move to the bottom of the round",
+      "MOVE_PREVIOUS_ROUND": "Move to the previous speaker round",
+      "MOVE_NEXT_ROUND": "Move to the next speaker round",
+      "SUGGEST_NEXT_ROUND": "This person already asked {{num}} questions in this round: consider moving it to the next speaker round"
+    },
     "DELETE": "Delete message",
     "DELETE_AND_BAN_USER": "Delete message and ban user",
     "DELETE_AND_BAN_USER_I": "The user won't be able to send messages until you remove the ban from the Configurations.",
