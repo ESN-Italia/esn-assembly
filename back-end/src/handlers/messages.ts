@@ -4,7 +4,7 @@
 
 import { DynamoDB, HandledError, ResourceController } from 'idea-aws';
 
-import { Message } from '../models/message.model';
+import { Message, MessageTypes } from '../models/message.model';
 import { Topic, TopicTypes } from '../models/topic.model';
 import { User } from '../models/user.model';
 import { Subject } from '../models/subject.model';
@@ -117,6 +117,10 @@ class MessagesRC extends ResourceController {
         return await this.markComplete();
       case 'UNDO_COMPLETE':
         return await this.undoComplete();
+      case 'POSTPONE':
+        return await this.postpone();
+      case 'UNDO_POSTPONE':
+        return await this.undoPostpone();
       default:
         throw new HandledError('Unsupported action');
     }
@@ -146,6 +150,37 @@ class MessagesRC extends ResourceController {
       TableName: DDB_TABLES.messages,
       Key: { topicId: this.topic.topicId, messageId: this.resourceId },
       UpdateExpression: 'REMOVE completedAt'
+    });
+
+    return this.message;
+  }
+  private async postpone(): Promise<Message> {
+    if (this.topic.isArchived()) throw new Error('Topic is archived');
+    if (!this.galaxyUser.isAdministrator) throw new Error('Unauthorized');
+    if (this.message.type !== MessageTypes.QUESTION) throw new HandledError('Only questions can be postponed');
+    if (this.message.completedAt) throw new HandledError('Message is already complete');
+
+    this.message.postponedAt = new Date().toISOString();
+    await ddb.update({
+      TableName: DDB_TABLES.messages,
+      Key: { topicId: this.topic.topicId, messageId: this.resourceId },
+      UpdateExpression: 'SET postponedAt = :postponedAt',
+      ExpressionAttributeValues: { ':postponedAt': this.message.postponedAt }
+    });
+
+    return this.message;
+  }
+  private async undoPostpone(): Promise<Message> {
+    if (this.topic.isArchived()) throw new Error('Topic is archived');
+    if (!this.galaxyUser.isAdministrator) throw new Error('Unauthorized');
+
+    if (!this.message.postponedAt) return this.message;
+
+    delete this.message.postponedAt;
+    await ddb.update({
+      TableName: DDB_TABLES.messages,
+      Key: { topicId: this.topic.topicId, messageId: this.resourceId },
+      UpdateExpression: 'REMOVE postponedAt'
     });
 
     return this.message;

@@ -45,6 +45,11 @@ export class Message extends Resource {
    * The timestamp when the messages was marked as completed.
    */
   completedAt?: epochISOString;
+  /**
+   * The timestamp when the message was (last) moved to the end of the queue.
+   * Only for `MessageTypes.QUESTION`.
+   */
+  postponedAt?: epochISOString;
 
   static getPK(userId: string): string {
     return [new Date().toISOString(), userId].join('_');
@@ -61,6 +66,7 @@ export class Message extends Resource {
     this.createdAt = this.clean(x.createdAt, d => new Date(d).toISOString(), new Date().toISOString());
     this.numOfUpvotes = this.clean(x.numOfUpvotes, Number, 0);
     if (x.completedAt) this.completedAt = this.clean(x.completedAt, d => new Date(d).toISOString());
+    if (x.postponedAt) this.postponedAt = this.clean(x.postponedAt, d => new Date(d).toISOString());
   }
 
   safeLoad(newData: any, safeData: any): void {
@@ -72,6 +78,14 @@ export class Message extends Resource {
     this.createdAt = safeData.createdAt;
     this.numOfUpvotes = safeData.numOfUpvotes;
     if (safeData.completedAt) this.completedAt = safeData.completedAt;
+    if (safeData.postponedAt) this.postponedAt = safeData.postponedAt;
+  }
+
+  /**
+   * The key to order the message in the queue: postponed messages go after the ones created before the postponement.
+   */
+  getQueueKey(): string {
+    return (this.postponedAt ?? this.createdAt).concat('_', this.messageId);
   }
 
   validate(topic: Topic): string[] {

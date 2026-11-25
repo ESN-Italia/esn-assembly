@@ -65,10 +65,10 @@ export class MessagesService {
 
     switch (options.sortBy) {
       case MessagesSortBy.CREATION_ASC:
-        filteredList = filteredList.sort((a, b): number => a.messageId.localeCompare(b.messageId));
+        filteredList = filteredList.sort((a, b): number => a.getQueueKey().localeCompare(b.getQueueKey()));
         break;
       case MessagesSortBy.CREATION_DESC:
-        filteredList = filteredList.sort((a, b): number => b.messageId.localeCompare(a.messageId));
+        filteredList = filteredList.sort((a, b): number => b.getQueueKey().localeCompare(a.getQueueKey()));
         break;
       case MessagesSortBy.UPVOTES_ASC:
         filteredList = filteredList.sort(
@@ -153,6 +153,23 @@ export class MessagesService {
   async undoComplete(topic: Topic, message: Message): Promise<Message> {
     const path = ['topics', topic.topicId, 'messages', message.messageId];
     const body = { action: 'UNDO_COMPLETE' };
+    return new Message(await this.api.patchResource(path, { body }));
+  }
+
+  /**
+   * Move a message (question) to the end of the queue.
+   */
+  async postpone(topic: Topic, message: Message): Promise<Message> {
+    const path = ['topics', topic.topicId, 'messages', message.messageId];
+    const body = { action: 'POSTPONE' };
+    return new Message(await this.api.patchResource(path, { body }));
+  }
+  /**
+   * Restore the original position of a postponed message (question) in the queue.
+   */
+  async undoPostpone(topic: Topic, message: Message): Promise<Message> {
+    const path = ['topics', topic.topicId, 'messages', message.messageId];
+    const body = { action: 'UNDO_POSTPONE' };
     return new Message(await this.api.patchResource(path, { body }));
   }
 

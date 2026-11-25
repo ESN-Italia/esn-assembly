@@ -249,6 +249,12 @@
                     <ion-col [size]="12" [sizeLg]="9">
                       <ion-card-title>
                         <ion-icon icon="checkmark-done" class="ion-padding-end" *ngIf="question.completedAt" />
+                        <ion-icon
+                          icon="play-skip-forward"
+                          class="ion-padding-end"
+                          *ngIf="question.postponedAt && !question.completedAt"
+                          [title]="'MESSAGES.POSTPONED' | translate"
+                        />
                         <ion-text *ngIf="question.creator">
                           <b>{{ question.creator.name }}</b> - {{
                           question.creator.getOrigin(app.configurations.usersOriginDisplay) }}

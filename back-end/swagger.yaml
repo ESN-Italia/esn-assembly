@@ -1209,7 +1209,7 @@ paths:
               properties:
                 action:
                   type: string
-                  enum: [MARK_COMPLETE, UNDO_COMPLETE]
+                  enum: [MARK_COMPLETE, UNDO_COMPLETE, POSTPONE, UNDO_POSTPONE]
       responses:
         200:
           $ref: '#/components/responses/OperationCompleted'

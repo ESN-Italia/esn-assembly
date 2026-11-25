@@ -263,6 +263,19 @@ export class LiveTopicPage implements OnInit, OnDestroy {
       this.loading.hide();
     }
   }
+  private async changePostponeStatus(message: Message, postpone: boolean): Promise<void> {
+    try {
+      await this.loading.show();
+      if (postpone) await this._messages.postpone(this.topic, message);
+      else await this._messages.undoPostpone(this.topic, message);
+      this.filterQuestions(null, true);
+      this.message.success('COMMON.OPERATION_COMPLETED');
+    } catch (err) {
+      this.message.error('COMMON.OPERATION_FAILED');
+    } finally {
+      this.loading.hide();
+    }
+  }
   private async deleteMessage(message: Message): Promise<void> {
     const doDelete = async (): Promise<void> => {
       try {
@@ -338,6 +351,25 @@ export class LiveTopicPage implements OnInit, OnDestroy {
         icon: 'square-outline',
         handler: (): Promise<void> => this.changeCompleteStatus(message, false)
       });
+    }
+
+    if (
+      this.app.user.isAdministrator &&
+      message.type === MessageTypes.QUESTION &&
+      !message.completedAt &&
+      !this.topic.isArchived()
+    ) {
+      buttons.push({
+        text: this.t._('MESSAGES.POSTPONE'),
+        icon: 'play-skip-forward',
+        handler: (): Promise<void> => this.changePostponeStatus(message, true)
+      });
+      if (message.postponedAt)
+        buttons.push({
+          text: this.t._('MESSAGES.UNDO_POSTPONE'),
+          icon: 'arrow-undo-circle',
+          handler: (): Promise<void> => this.changePostponeStatus(message, false)
+        });
     }
 
     if (
