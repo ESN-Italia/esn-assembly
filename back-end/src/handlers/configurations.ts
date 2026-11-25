@@ -135,6 +135,7 @@ class ConfigurationsRC extends ResourceController {
       user: `${this.galaxyUser.firstName} ${this.galaxyUser.lastName}`,
       title: TEST_EMAIL_EXAMPLE_TITLE,
       detail: TEST_EMAIL_EXAMPLE_DETAIL,
+      questioner: `${this.galaxyUser.firstName} ${this.galaxyUser.lastName}`,
       url: TEST_EMAIL_EXAMPLE_URL,
       message: TEST_EMAIL_EXAMPLE_MESSAGE
     };

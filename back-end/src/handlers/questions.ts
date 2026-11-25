@@ -208,6 +208,7 @@ class Questions extends ResourceController {
         user: subject.name,
         title: topic.name,
         detail: question.summary,
+        questioner: question.creator.name,
         url: QUESTION_BASE_URL.concat(topic.topicId)
       };
       const { appTitle } = await ddb.get({ TableName: DDB_TABLES.configurations, Key: { PK: Configurations.PK } });
